@@ -1,8 +1,10 @@
 package com.example.backgammon.viewmodel
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.delay
+import com.example.backgammon.data.preferences.SessionManager
+import com.example.backgammon.data.repository.AuthRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -16,35 +18,81 @@ data class AuthState(
     val error: String? = null
 )
 
-class AuthViewModel : ViewModel() {
+class AuthViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val _state = MutableStateFlow(AuthState())
+    private val authRepository = AuthRepository()
+    private val sessionManager = SessionManager(application.applicationContext)
+
+    private val _state = MutableStateFlow(
+        AuthState(
+            isLoggedIn = sessionManager.isLoggedIn(),
+            username = sessionManager.getUsername() ?: ""
+        )
+    )
     val state: StateFlow<AuthState> = _state.asStateFlow()
+
+    init {
+        // Проверяем авторизацию при создании ViewModel
+        checkLoginStatus()
+    }
+
+    private fun checkLoginStatus() {
+        if (sessionManager.isLoggedIn()) {
+            _state.update {
+                it.copy(
+                    isLoggedIn = true,
+                    username = sessionManager.getUsername() ?: ""
+                )
+            }
+        }
+    }
 
     fun login(username: String, password: String) {
         viewModelScope.launch {
             // Показываем индикатор загрузки
             _state.update { it.copy(isLoading = true, error = null) }
 
-            // Имитация задержки сетевого запроса
-            delay(1500)
+            try {
+                val result = authRepository.login(username, password)
 
-            // Проверка учетных данных (временная реализация)
-            if (username.isNotEmpty() && password.isNotEmpty()) {
-                // Успешный вход
-                _state.update {
-                    it.copy(
-                        isLoggedIn = true,
-                        username = username,
-                        isLoading = false
-                    )
-                }
-            } else {
-                // Ошибка входа
+                result.fold(
+                    onSuccess = { response ->
+                        if (response.success) {
+                            // Сохраняем данные авторизации
+                            response.token?.let { token ->
+                                sessionManager.saveAuthUser(token, response.username ?: username)
+                            }
+
+                            _state.update {
+                                it.copy(
+                                    isLoggedIn = true,
+                                    username = response.username ?: username,
+                                    isLoading = false
+                                )
+                            }
+                        } else {
+                            _state.update {
+                                it.copy(
+                                    isLoading = false,
+                                    error = response.message ?: "Ошибка авторизации"
+                                )
+                            }
+                        }
+                    },
+                    onFailure = { e ->
+                        _state.update {
+                            it.copy(
+                                isLoading = false,
+                                error = e.message ?: "Ошибка соединения с сервером"
+                            )
+                        }
+                    }
+                )
+            } catch (e: Exception) {
                 _state.update {
                     it.copy(
                         isLoading = false,
-                        error = "Неверное имя пользователя или пароль"
+                        error = e.message ?: "Неизвестная ошибка"
                     )
                 }
             }
@@ -56,38 +104,77 @@ class AuthViewModel : ViewModel() {
             // Показываем индикатор загрузки
             _state.update { it.copy(isLoading = true, error = null) }
 
-            // Имитация задержки сетевого запроса
-            delay(2000)
+            // Предварительная валидация данных
+            val validationError = validateRegisterInput(username, email, password, confirmPassword)
+            if (validationError != null) {
+                _state.update { it.copy(isLoading = false, error = validationError) }
+                return@launch
+            }
 
-            // Проверка данных
-            when {
-                username.isEmpty() -> {
-                    _state.update { it.copy(isLoading = false, error = "Имя пользователя не может быть пустым") }
-                }
-                !email.contains("@") -> {
-                    _state.update { it.copy(isLoading = false, error = "Неверный формат email") }
-                }
-                password.length < 6 -> {
-                    _state.update { it.copy(isLoading = false, error = "Пароль должен содержать не менее 6 символов") }
-                }
-                password != confirmPassword -> {
-                    _state.update { it.copy(isLoading = false, error = "Пароли не совпадают") }
-                }
-                else -> {
-                    // Успешная регистрация
-                    _state.update {
-                        it.copy(
-                            isLoggedIn = true,
-                            username = username,
-                            isLoading = false
-                        )
+            try {
+                val result = authRepository.register(username, email, password)
+
+                result.fold(
+                    onSuccess = { response ->
+                        if (response.success) {
+                            // Сохраняем данные авторизации
+                            response.token?.let { token ->
+                                sessionManager.saveAuthUser(token, response.username ?: username)
+                            }
+
+                            _state.update {
+                                it.copy(
+                                    isLoggedIn = true,
+                                    username = response.username ?: username,
+                                    isLoading = false
+                                )
+                            }
+                        } else {
+                            _state.update {
+                                it.copy(
+                                    isLoading = false,
+                                    error = response.message ?: "Ошибка регистрации"
+                                )
+                            }
+                        }
+                    },
+                    onFailure = { e ->
+                        _state.update {
+                            it.copy(
+                                isLoading = false,
+                                error = e.message ?: "Ошибка соединения с сервером"
+                            )
+                        }
                     }
+                )
+            } catch (e: Exception) {
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        error = e.message ?: "Неизвестная ошибка"
+                    )
                 }
             }
         }
     }
 
+    private fun validateRegisterInput(
+        username: String,
+        email: String,
+        password: String,
+        confirmPassword: String
+    ): String? {
+        return when {
+            username.isEmpty() -> "Имя пользователя не может быть пустым"
+            !email.contains("@") -> "Неверный формат email"
+            password.length < 6 -> "Пароль должен содержать не менее 6 символов"
+            password != confirmPassword -> "Пароли не совпадают"
+            else -> null
+        }
+    }
+
     fun logout() {
+        sessionManager.logout()
         _state.update {
             AuthState() // Сброс всех данных авторизации
         }
