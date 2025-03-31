@@ -14,7 +14,9 @@ import com.example.backgammon.viewmodel.AuthViewModel
 fun MainMenuScreen(
     authViewModel: AuthViewModel,
     onStartGame: () -> Unit,
-    onNavigateToLogin: () -> Unit
+    onNavigateToLogin: () -> Unit,
+    onNavigateToSettings: () -> Unit,
+    onNavigateToStatistics: () -> Unit
 ) {
     val authState by authViewModel.state.collectAsStateWithLifecycle()
 
@@ -55,9 +57,9 @@ fun MainMenuScreen(
             )
         }
 
-        // Другие кнопки (временно неактивные)
+        // Кнопка статистики
         Button(
-            onClick = { /* Будет реализовано позже */ },
+            onClick = onNavigateToStatistics,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(60.dp)
@@ -69,8 +71,9 @@ fun MainMenuScreen(
             )
         }
 
+        // Кнопка настроек
         Button(
-            onClick = { /* Будет реализовано позже */ },
+            onClick = onNavigateToSettings,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(60.dp)

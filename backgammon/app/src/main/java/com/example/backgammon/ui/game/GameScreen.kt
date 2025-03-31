@@ -47,6 +47,13 @@ fun GameScreen(
             text = "Ход: ${if (gameState.currentTurn == Color.BLACK) "Черные" else "Белые"}",
             fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+
+        // Отображение количества ходов
+        Text(
+            text = "Количество ходов: ${gameState.movesCount}",
+            fontSize = 16.sp,
             modifier = Modifier.padding(bottom = 16.dp)
         )
 
