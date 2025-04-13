@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -23,6 +24,49 @@ fun StatisticsScreen(
     val statistics by statisticsViewModel.statisticsState.collectAsState()
 
     var showResetDialog by remember { mutableStateOf(false) }
+
+    // Добавляем индикатор загрузки и сообщение об ошибке
+    val isSyncing by statisticsViewModel.isSyncing.collectAsState()
+    val syncError by statisticsViewModel.syncError.collectAsState()
+
+    if (isSyncing) {
+        LinearProgressIndicator(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp)
+        )
+    }
+
+    syncError?.let { error ->
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.errorContainer
+            )
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = error,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(onClick = { statisticsViewModel.clearSyncError() }) {
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = "Закрыть",
+                        tint = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                }
+            }
+        }
+    }
 
     // Диалог подтверждения сброса статистики
     if (showResetDialog) {
