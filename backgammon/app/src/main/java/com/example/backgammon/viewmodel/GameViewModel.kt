@@ -13,6 +13,7 @@ import com.example.backgammon.core.Color
 import com.example.backgammon.core.PositionOnBoard
 import com.example.backgammon.data.preferences.SettingsManager
 import com.example.backgammon.data.preferences.StatisticsManager
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,7 +28,9 @@ data class GameState(
     val possibleMoves: List<Int> = emptyList(),
     val gameOver: Boolean = false,
     val winner: Color? = null,
-    val movesCount: Int = 0
+    val movesCount: Int = 0,
+    val isRollingDice: Boolean = false,  // Новое поле для анимации
+    val hints: List<Pair<Int, Int>> = emptyList() // Подсказки в формате <откуда, куда>
 )
 
 class GameViewModel(application: Application) : AndroidViewModel(application), BoardListenerInterface {
@@ -80,7 +83,8 @@ class GameViewModel(application: Application) : AndroidViewModel(application), B
         _gameState.update {
             it.copy(
                 selectedPosition = position,
-                possibleMoves = possibleMoves
+                possibleMoves = possibleMoves,
+                hints = emptyList() // Скрываем подсказки при выборе
             )
         }
     }
@@ -121,8 +125,80 @@ class GameViewModel(application: Application) : AndroidViewModel(application), B
     }
 
     fun updateTurns() {
-        board.updateTurns()
-        updateGameState()
+        if (board.turns.isEmpty()) {
+            rollDice()
+        }
+    }
+
+    // Функция для анимации броска костей
+    fun rollDice() {
+        if (_gameState.value.isRollingDice || _gameState.value.diceValues.isNotEmpty()) {
+            return // Предотвращаем повторный бросок, если анимация уже идёт или кости уже брошены
+        }
+
+        viewModelScope.launch {
+            // Устанавливаем флаг анимации
+            _gameState.update { it.copy(isRollingDice = true) }
+
+            // Анимируем бросок
+            val animationDuration = 800L
+            val fps = 8
+            val interval = animationDuration / fps
+
+            repeat(fps) {
+                // Генерируем случайные значения для визуальной анимации
+                _gameState.update {
+                    it.copy(diceValues = listOf((1..6).random(), (1..6).random()))
+                }
+                delay(interval)
+            }
+
+            // Завершаем анимацию, обновляем ходы
+            board.updateTurns()
+            _gameState.update {
+                it.copy(
+                    diceValues = board.turns,
+                    isRollingDice = false
+                )
+            }
+        }
+    }
+
+    // Функция для отображения подсказок
+    fun showHints() {
+        if (_gameState.value.selectedPosition != -1) {
+            // Если уже выбрана позиция, не показываем подсказки
+            return
+        }
+
+        val possiblePositions = mutableListOf<Int>()
+
+        // Находим все позиции с шашками текущего игрока
+        for (i in 0 until 24) {
+            if (board.listOfPositions[i].color == board.currentTurn) {
+                possiblePositions.add(i)
+            }
+        }
+
+        // Находим все возможные ходы
+        val allPossibleMoves = mutableListOf<Pair<Int, Int>>()
+        possiblePositions.forEach { pos ->
+            val moves = board.possibleMoves(pos)
+            moves.forEach { move ->
+                allPossibleMoves.add(Pair(pos, move))
+            }
+        }
+
+        _gameState.update {
+            it.copy(hints = allPossibleMoves)
+        }
+    }
+
+    // Функция для скрытия подсказок
+    fun hideHints() {
+        _gameState.update {
+            it.copy(hints = emptyList())
+        }
     }
 
     override fun showDices(firstDice: Int, secondDice: Int) {
